@@ -68,6 +68,7 @@ document.addEventListener('DOMContentLoaded', () => {
     setupTheme();
     setupEventListeners();
     loadLedgerData();
+    initAutoPolling();
 });
 
 /* ==========================================================================
@@ -350,7 +351,6 @@ async function handleHardwareRegister() {
         els.btnDetectRegister.disabled = true;
         els.btnDetectRegister.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> Reading Hardware...';
         
-        // 1. Fetch from local C# port listener
         const response = await fetch('http://localhost:12345/get-dsc-info', {
             method: 'GET',
             mode: 'cors'
@@ -358,29 +358,31 @@ async function handleHardwareRegister() {
         
         const data = await response.json();
         
-        if (data.success) {
-            // 2. Submit to PHP API to register/update in the dsc_registry table
-            const registerData = {
-                holder_name: data.holderName,
-                serial_number: data.serialNumber,
-                expiry_date: data.expiryDate,
-                dsc_class: data.class || 'Class 3'
-            };
+        if (data.success && data.certificates && data.certificates.length > 0) {
+            let processed = 0;
+            let lastId = null;
             
-            const serverResponse = await API.registerDSC(registerData);
-            
-            if (serverResponse.success) {
-                if (serverResponse.data.is_new) {
-                    showToast(`Successfully registered new DSC for: ${data.holderName}!`, 'success');
-                } else {
-                    showToast(`Updated expiry parameters for existing token: ${data.holderName}`, 'success');
+            for (const cert of data.certificates) {
+                const registerData = {
+                    holder_name: cert.holderName,
+                    serial_number: cert.serialNumber,
+                    expiry_date: cert.expiryDate,
+                    dsc_class: cert.class || 'Class 3'
+                };
+                
+                const serverResponse = await API.registerDSC(registerData);
+                if (serverResponse.success) {
+                    processed++;
+                    lastId = serverResponse.data.id;
                 }
-                
-                // Refresh table to display the appended/updated row
+            }
+            
+            if (processed > 0) {
+                showToast(`Successfully registered/updated ${processed} DSC token(s) from hardware!`, 'success');
                 await loadLedgerData();
-                
-                // Highlight and open the edit drawer for the newly added/updated row so they can enter custom fields
-                openEditModal(serverResponse.data.id);
+                if (lastId) {
+                    openEditModal(lastId);
+                }
             }
         } else {
             showToast(data.message || 'Make sure the USB DSC token is plugged in.', 'error');
@@ -619,4 +621,61 @@ function escapeHTML(str) {
         .replace(/>/g, '&gt;')
         .replace(/"/g, '&quot;')
         .replace(/'/g, '&#039;');
+}
+
+/* ==========================================================================
+   🕵️‍♂️ Silent Hardware Auto-Polling (Zero-Click Registration)
+   ========================================================================== */
+let isPolling = false;
+
+function initAutoPolling() {
+    // Check local listener every 4 seconds in the background
+    setInterval(async () => {
+        if (isPolling) return;
+        
+        try {
+            isPolling = true;
+            
+            const response = await fetch('http://localhost:12345/get-dsc-info', {
+                method: 'GET',
+                mode: 'cors'
+            });
+            
+            const data = await response.json();
+            
+            if (data.success && data.certificates && data.certificates.length > 0) {
+                let anyNewAdded = false;
+                
+                for (const cert of data.certificates) {
+                    // Check if this token serial already exists in our loaded state
+                    const exists = state.records.some(r => r.serial_number === cert.serialNumber);
+                    
+                    if (!exists) {
+                        const registerData = {
+                            holder_name: cert.holderName,
+                            serial_number: cert.serialNumber,
+                            expiry_date: cert.expiryDate,
+                            dsc_class: cert.class || 'Class 3'
+                        };
+                        
+                        const serverResponse = await API.registerDSC(registerData);
+                        
+                        if (serverResponse.success) {
+                            anyNewAdded = true;
+                            showToast(`Auto-Detected & registered new DSC for: ${cert.holderName}!`, 'success');
+                        }
+                    }
+                }
+                
+                if (anyNewAdded) {
+                    // Instantly refresh grid without spinner disturbance
+                    await loadLedgerData();
+                }
+            }
+        } catch (error) {
+            // Ignore connection errors (helper offline) silently during polling
+        } finally {
+            isPolling = false;
+        }
+    }, 4000);
 }
