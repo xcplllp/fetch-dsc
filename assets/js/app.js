@@ -38,6 +38,7 @@ const els = {
     modalClientName: document.getElementById('modal-client-name'),
     modalClientEmail: document.getElementById('modal-client-email'),
     modalClientAvatar: document.getElementById('modal-client-avatar'),
+    btnDetectDsc: document.getElementById('btn-detect-dsc'),
     
     // Toast
     toastContainer: document.getElementById('toast-container')
@@ -290,6 +291,11 @@ function setupEventListeners() {
     
     // Form submit for DSC edit
     els.editForm.addEventListener('submit', handleFormSubmit);
+    
+    // Auto-detect plugged DSC
+    if (els.btnDetectDsc) {
+        els.btnDetectDsc.addEventListener('click', handleDscAutoDetect);
+    }
 }
 
 /* ==========================================================================
@@ -395,6 +401,52 @@ window.sendReminder = function(userId, method) {
         showToast(`Drafted Email Reminder to ${user.email}`, 'success');
     }
 };
+
+/* ==========================================================================
+   DSC Auto-Detection via Local Helper Executable (Port 12345)
+   ========================================================================== */
+async function handleDscAutoDetect() {
+    const originalHTML = els.btnDetectDsc.innerHTML;
+    
+    try {
+        els.btnDetectDsc.disabled = true;
+        els.btnDetectDsc.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Detecting...';
+        
+        // Query the local C# DscHelper HTTP listener running on port 12345
+        const response = await fetch('http://localhost:12345/get-dsc-info', {
+            method: 'GET',
+            mode: 'cors'
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            // Autofill the input fields
+            els.editHolderName.value = data.holderName || '';
+            els.editExpiryDate.value = data.expiryDate || '';
+            els.editTokenSerial.value = data.serialNumber || '';
+            
+            // Map the DSC Class selection
+            if (data.class && (data.class.includes('Class 3') || data.class.includes('3'))) {
+                els.editClass.value = 'Class 3';
+            } else if (data.class && (data.class.includes('Class 2') || data.class.includes('2'))) {
+                els.editClass.value = 'Class 2';
+            } else {
+                els.editClass.value = 'Class 3';
+            }
+            
+            showToast('DSC details auto-detected and pre-filled!', 'success');
+        } else {
+            showToast(data.message || 'Failed to detect DSC. Make sure the USB token is plugged in.', 'error');
+        }
+    } catch (error) {
+        console.error('DSC Detection Error:', error);
+        showToast('Connection failed. Make sure DscHelper.exe is running on port 12345.', 'error');
+    } finally {
+        els.btnDetectDsc.disabled = false;
+        els.btnDetectDsc.innerHTML = originalHTML;
+    }
+}
 
 /* ==========================================================================
    Utilities (Toasts & Escaping)

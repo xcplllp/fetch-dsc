@@ -157,10 +157,13 @@
                 <div class="modal-body">
                     <div class="client-summary">
                         <div class="client-avatar" id="modal-client-avatar">U</div>
-                        <div>
+                        <div style="flex-grow: 1; margin-right: 12px;">
                             <h4 id="modal-client-name">-</h4>
                             <p id="modal-client-email">-</p>
                         </div>
+                        <button type="button" class="btn btn-primary btn-sm" id="btn-detect-dsc" style="background: linear-gradient(135deg, #a855f7, #6366f1); border: none; box-shadow: 0 4px 12px rgba(168, 85, 247, 0.25);">
+                            <i class="fa-solid fa-wand-magic-sparkles"></i> Auto-Detect DSC
+                        </button>
                     </div>
 
                     <div class="form-grid">
