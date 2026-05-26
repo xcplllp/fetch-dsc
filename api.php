@@ -100,40 +100,77 @@ switch ($action) {
         }
         
         try {
+            // ----------------------------------------------------------
+            // Auto-fetch email & phone from portal users table
+            // Matches by name = holder_name (case-insensitive)
+            // ----------------------------------------------------------
+            $auto_email = null;
+            $auto_phone = null;
+            try {
+                $userStmt = $db->prepare(
+                    "SELECT email, phone FROM users WHERE LOWER(name) = LOWER(?) LIMIT 1"
+                );
+                $userStmt->execute([$holder_name]);
+                $userRow = $userStmt->fetch();
+                if ($userRow) {
+                    $auto_email = $userRow['email'] ?: null;
+                    $auto_phone = $userRow['phone'] ?: null;
+                }
+            } catch (PDOException $ue) {
+                // users table missing or column mismatch — silently continue
+            }
+
             // Check if the DSC token serial number already exists in the registry
-            $checkStmt = $db->prepare("SELECT id, client_name, token_status, location FROM dsc_registry WHERE serial_number = ?");
+            $checkStmt = $db->prepare("SELECT id, email, phone, token_status FROM dsc_registry WHERE serial_number = ?");
             $checkStmt->execute([$serial_number]);
             $existing = $checkStmt->fetch();
             
             if ($existing) {
-                // If it already exists, automatically update its expiry date and holder name (e.g., renewed certificate)
-                $updateStmt = $db->prepare("UPDATE dsc_registry 
-                                            SET holder_name = ?, expiry_date = ?, dsc_class = ? 
-                                            WHERE id = ?");
-                $updateStmt->execute([$holder_name, $expiry_date, $dsc_class, $existing['id']]);
+                // Update hardware fields; also fill email/phone if they are still empty
+                $updateStmt = $db->prepare(
+                    "UPDATE dsc_registry 
+                     SET holder_name = ?, expiry_date = ?, dsc_class = ?,
+                         email = COALESCE(NULLIF(email, ''), ?),
+                         phone = COALESCE(NULLIF(phone, ''), ?)
+                     WHERE id = ?"
+                );
+                $updateStmt->execute([
+                    $holder_name, $expiry_date, $dsc_class,
+                    $auto_email, $auto_phone,
+                    $existing['id']
+                ]);
                 
                 jsonResponse(true, 'Existing DSC record updated successfully', [
-                    'id' => $existing['id'],
+                    'id'          => $existing['id'],
                     'holder_name' => $holder_name,
                     'serial_number' => $serial_number,
                     'expiry_date' => $expiry_date,
-                    'dsc_class' => $dsc_class,
-                    'is_new' => false
+                    'dsc_class'   => $dsc_class,
+                    'email'       => $existing['email'] ?: $auto_email,
+                    'phone'       => $existing['phone'] ?: $auto_phone,
+                    'is_new'      => false
                 ]);
             } else {
-                // Insert a brand new row in the spreadsheet
-                $insertStmt = $db->prepare("INSERT INTO dsc_registry (holder_name, serial_number, expiry_date, dsc_class) 
-                                            VALUES (?, ?, ?, ?)");
-                $insertStmt->execute([$holder_name, $serial_number, $expiry_date, $dsc_class]);
+                // Insert a brand new row with auto-fetched email & phone
+                $insertStmt = $db->prepare(
+                    "INSERT INTO dsc_registry (holder_name, serial_number, expiry_date, dsc_class, email, phone) 
+                     VALUES (?, ?, ?, ?, ?, ?)"
+                );
+                $insertStmt->execute([
+                    $holder_name, $serial_number, $expiry_date, $dsc_class,
+                    $auto_email, $auto_phone
+                ]);
                 $newId = $db->lastInsertId();
                 
                 jsonResponse(true, 'New DSC token registered successfully', [
-                    'id' => $newId,
+                    'id'          => $newId,
                     'holder_name' => $holder_name,
                     'serial_number' => $serial_number,
                     'expiry_date' => $expiry_date,
-                    'dsc_class' => $dsc_class,
-                    'is_new' => true
+                    'dsc_class'   => $dsc_class,
+                    'email'       => $auto_email,
+                    'phone'       => $auto_phone,
+                    'is_new'      => true
                 ]);
             }
         } catch (PDOException $e) {
