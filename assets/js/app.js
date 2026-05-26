@@ -1,54 +1,73 @@
 /**
- * DSC Manager - Core Application Logic
- * Integrates metrics calculations, table search/filter queries, quick-reminders, and modal transitions.
+ * DSC Registry Ledger - Standalone Frontend Application
+ * Manages Excel grid rendering, dynamic filters, instant hardware auto-registration,
+ * CSV export, and quick-alerts (WhatsApp/Email).
  */
 
-// App State
+// Global Application State
 let state = {
-    users: [],
+    records: [],
     stats: {},
     filters: {
         search: '',
         status: 'all',
-        role: 'all'
+        possession: 'all'
     },
-    editingUserId: null
+    editingId: null
 };
 
-// UI Elements
+// UI Element Selector Map
 const els = {
     themeToggle: document.getElementById('theme-toggle'),
     metricsContainer: document.getElementById('metrics-container'),
+    
+    // Quick Actions
+    btnDetectRegister: document.getElementById('btn-detect-register'),
+    btnExportCSV: document.getElementById('btn-export-csv'),
+    
+    // Filters & Search
     searchInput: document.getElementById('search-input'),
     statusFilter: document.getElementById('status-filter'),
-    roleFilter: document.getElementById('role-filter'),
+    possessionFilter: document.getElementById('possession-filter'),
+    
+    // Grid Table
     tableBody: document.getElementById('table-body'),
     showingEntriesText: document.getElementById('showing-entries-text'),
     
-    // Modal
+    // Modal Edit Form
     editModal: document.getElementById('edit-modal'),
     closeModalBtn: document.getElementById('close-modal-btn'),
     cancelModalBtn: document.getElementById('cancel-modal-btn'),
     editForm: document.getElementById('edit-dsc-form'),
     editUserId: document.getElementById('edit-user-id'),
+    
+    // Editable Spreadsheet Metadata Columns
+    editClientName: document.getElementById('edit-client-name'),
+    editPin: document.getElementById('edit-pin'),
+    editTokenStatus: document.getElementById('edit-token-status'),
+    editLocation: document.getElementById('edit-location'),
+    editEmail: document.getElementById('edit-email'),
+    editPhone: document.getElementById('edit-phone'),
+    
+    // Protected Hardware Fields
     editHolderName: document.getElementById('edit-holder-name'),
     editExpiryDate: document.getElementById('edit-expiry-date'),
     editClass: document.getElementById('edit-class'),
     editTokenSerial: document.getElementById('edit-token-serial'),
+    
+    // Modal Summaries
     modalClientName: document.getElementById('modal-client-name'),
     modalClientEmail: document.getElementById('modal-client-email'),
-    modalClientAvatar: document.getElementById('modal-client-avatar'),
-    btnDetectDsc: document.getElementById('btn-detect-dsc'),
     
-    // Toast
+    // Toast Messages
     toastContainer: document.getElementById('toast-container')
 };
 
-// Init Application
+// Mount Application
 document.addEventListener('DOMContentLoaded', () => {
     setupTheme();
     setupEventListeners();
-    loadDashboardData();
+    loadLedgerData();
 });
 
 /* ==========================================================================
@@ -84,143 +103,151 @@ function setupTheme() {
 }
 
 /* ==========================================================================
-   Data Load & Render
+   Data Fetching & Rendering
    ========================================================================== */
-async function loadDashboardData() {
+async function loadLedgerData() {
     try {
         setTableLoading(true);
         const data = await API.getDSCList();
         
-        state.users = data.data.users;
+        state.records = data.data.records;
         state.stats = data.data.stats;
         
         renderStats();
-        applyFiltersAndRenderTable();
+        applyFiltersAndRenderGrid();
     } catch (error) {
-        showToast(error.message || 'Error loading dashboard data', 'error');
+        showToast(error.message || 'Error loading ledger sheet', 'error');
         setTableError(error.message);
     }
 }
 
 function renderStats() {
-    const containers = els.metricsContainer.children;
+    const cards = els.metricsContainer.children;
     
-    // Total Clients
-    containers[0].classList.remove('loading');
-    containers[0].querySelector('.metric-value').textContent = state.stats.total_users || 0;
+    // Total Registered
+    cards[0].classList.remove('loading');
+    cards[0].querySelector('.metric-value').textContent = state.stats.total || 0;
     
     // Active DSC
-    containers[1].classList.remove('loading');
-    containers[1].querySelector('.metric-value').textContent = state.stats.active_dsc || 0;
+    cards[1].classList.remove('loading');
+    cards[1].querySelector('.metric-value').textContent = state.stats.active || 0;
     
     // Expiring Soon
-    containers[2].classList.remove('loading');
-    containers[2].querySelector('.metric-value').textContent = state.stats.expiring_soon || 0;
+    cards[2].classList.remove('loading');
+    cards[2].querySelector('.metric-value').textContent = state.stats.expiring_soon || 0;
     
     // Expired DSC
-    containers[3].classList.remove('loading');
-    containers[3].querySelector('.metric-value').textContent = state.stats.expired_dsc || 0;
+    cards[3].classList.remove('loading');
+    cards[3].querySelector('.metric-value').textContent = state.stats.expired || 0;
 }
 
-function applyFiltersAndRenderTable() {
-    const { search, status, role } = state.filters;
-    const today = new Date().toISOString().split('T')[0];
+function applyFiltersAndRenderGrid() {
+    const { search, status, possession } = state.filters;
     
-    const filtered = state.users.filter(user => {
-        // 1. Search Filter
+    const filtered = state.records.filter(row => {
+        // 1. Search Query Match
         const searchLower = search.toLowerCase();
-        const matchesSearch = !search || 
-            (user.name && user.name.toLowerCase().includes(searchLower)) ||
-            (user.email && user.email.toLowerCase().includes(searchLower)) ||
-            (user.phone && user.phone.includes(searchLower)) ||
-            (user.pan_number && user.pan_number.toLowerCase().includes(searchLower)) ||
-            (user.dsc_holder_name && user.dsc_holder_name.toLowerCase().includes(searchLower)) ||
-            (user.dsc_token_serial && user.dsc_token_serial.toLowerCase().includes(searchLower));
+        const matchesSearch = !search ||
+            (row.holder_name && row.holder_name.toLowerCase().includes(searchLower)) ||
+            (row.client_name && row.client_name.toLowerCase().includes(searchLower)) ||
+            (row.serial_number && row.serial_number.toLowerCase().includes(searchLower)) ||
+            (row.location && row.location.toLowerCase().includes(searchLower)) ||
+            (row.email && row.email.toLowerCase().includes(searchLower)) ||
+            (row.pin && row.pin.toLowerCase().includes(searchLower));
             
-        // 2. Status Filter
+        // 2. Expiry Status Match
         let matchesStatus = true;
         if (status !== 'all') {
-            matchesStatus = (user.dsc_status === status);
+            matchesStatus = (row.status === status);
         }
         
-        // 3. Role Filter
-        let matchesRole = true;
-        if (role !== 'all') {
-            matchesRole = (user.role === role);
+        // 3. Possession Match
+        let matchesPossession = true;
+        if (possession !== 'all') {
+            matchesPossession = (row.token_status === possession);
         }
         
-        return matchesSearch && matchesStatus && matchesRole;
+        return matchesSearch && matchesStatus && matchesPossession;
     });
     
-    renderTable(filtered);
+    renderGrid(filtered);
 }
 
-function renderTable(data) {
+function renderGrid(data) {
     els.tableBody.innerHTML = '';
     
     if (data.length === 0) {
         els.tableBody.innerHTML = `
             <tr>
-                <td colspan="8" class="text-center py-5 text-muted">
-                    <i class="fa-solid fa-folder-open mb-2" style="font-size: 2rem; display: block; opacity: 0.5;"></i>
-                    No clients found matching the selected filters.
+                <td colspan="9" class="text-center py-5 text-muted">
+                    <i class="fa-solid fa-folder-open mb-2" style="font-size: 2.2rem; display: block; opacity: 0.4;"></i>
+                    No ledger records found matching the filters.
                 </td>
             </tr>
         `;
-        els.showingEntriesText.textContent = `Showing 0 of ${state.users.length} entries`;
+        els.showingEntriesText.textContent = `Showing 0 of ${state.records.length} entries`;
         return;
     }
     
-    data.forEach(user => {
+    data.forEach(row => {
         const tr = document.createElement('tr');
         
-        // Formatted Expiry Date
-        let expiryDisplay = '<span class="text-muted">—</span>';
-        if (user.dsc_expiry_date) {
-            const date = new Date(user.dsc_expiry_date);
-            expiryDisplay = date.toLocaleDateString('en-IN', {
-                day: '2-digit', month: 'short', year: 'numeric'
-            });
+        // Format dates
+        const dateObj = new Date(row.expiry_date);
+        const expiryDisplay = dateObj.toLocaleDateString('en-IN', {
+            day: '2-digit', month: 'short', year: 'numeric'
+        });
+        
+        // Expiry Status Tag
+        let statusBadge = '<span class="badge badge-status none">Incomplete</span>';
+        if (row.status === 'active') {
+            statusBadge = '<span class="badge badge-status active"><i class="fa-solid fa-circle-check mr-1" style="margin-right:4px;"></i> Active</span>';
+        } else if (row.status === 'expiring_soon') {
+            statusBadge = '<span class="badge badge-status expiring_soon"><i class="fa-solid fa-circle-exclamation mr-1" style="margin-right:4px;"></i> Expiring Soon</span>';
+        } else if (row.status === 'expired') {
+            statusBadge = '<span class="badge badge-status expired"><i class="fa-solid fa-triangle-exclamation mr-1" style="margin-right:4px;"></i> Expired</span>';
         }
         
-        // Expiry Status Badge
-        let statusBadge = '<span class="badge badge-status none">No DSC</span>';
-        if (user.dsc_status === 'active') {
-            statusBadge = '<span class="badge badge-status active"><i class="fa-solid fa-circle-check mr-1" style="margin-right:4px;"></i> Active</span>';
-        } else if (user.dsc_status === 'expiring_soon') {
-            statusBadge = '<span class="badge badge-status expiring_soon"><i class="fa-solid fa-clock-rotate-left mr-1" style="margin-right:4px;"></i> Expiring Soon</span>';
-        } else if (user.dsc_status === 'expired') {
-            statusBadge = '<span class="badge badge-status expired"><i class="fa-solid fa-triangle-exclamation mr-1" style="margin-right:4px;"></i> Expired</span>';
-        } else if (user.dsc_status === 'incomplete') {
-            statusBadge = '<span class="badge badge-status incomplete"><i class="fa-solid fa-circle-info mr-1" style="margin-right:4px;"></i> Details Missing</span>';
-        }
+        // Possession Badge
+        const possessionClass = row.token_status === 'In Office' ? 'client' : 'admin';
+        const possessionIcon = row.token_status === 'In Office' ? 'fa-building-columns' : 'fa-handshake';
+        const possessionBadge = `<span class="badge badge-role ${possessionClass}"><i class="fa-solid ${possessionIcon} mr-1" style="margin-right:4px;"></i> ${escapeHTML(row.token_status)}</span>`;
         
         tr.innerHTML = `
-            <td>
-                <div class="client-name-cell">${escapeHTML(user.name)}</div>
-                <div class="client-sub">${escapeHTML(user.email || 'No email')} | ${escapeHTML(user.phone || 'No phone')}</div>
+            <td class="client-name-cell">
+                ${escapeHTML(row.holder_name)}
             </td>
             <td>
-                <span class="badge badge-role ${user.role}">${escapeHTML(user.role)}</span>
+                <span class="client-name-cell" style="color: var(--primary);">${escapeHTML(row.client_name || '—')}</span>
             </td>
-            <td class="client-name-cell">${escapeHTML(user.dsc_holder_name || '—')}</td>
-            <td>${expiryDisplay}</td>
-            <td><span class="text-muted">${escapeHTML(user.dsc_class || '—')}</span></td>
-            <td style="font-family: monospace; font-size: 0.8rem;">${escapeHTML(user.dsc_token_serial || '—')}</td>
-            <td>${statusBadge}</td>
+            <td>
+                <span style="font-family: monospace; font-size: 0.85rem; background: rgba(0,0,0,0.12); padding: 4px 8px; border-radius: 4px; border: 1px solid var(--panel-border); font-weight: 600;">
+                    ${escapeHTML(row.pin || '—')}
+                </span>
+            </td>
+            <td class="client-name-cell">${expiryDisplay}</td>
+            <td><span class="text-muted" style="font-size: 0.85rem;">${escapeHTML(row.dsc_class || 'Class 3')}</span></td>
+            <td style="font-family: monospace; font-size: 0.8rem;" title="${escapeHTML(row.serial_number)}">
+                ${escapeHTML(row.serial_number).substring(0, 16)}...
+            </td>
+            <td>${possessionBadge}</td>
+            <td>
+                <span class="text-muted" style="font-weight: 500;"><i class="fa-solid fa-box-open mr-1" style="margin-right:4px; font-size: 0.8rem;"></i> ${escapeHTML(row.location || '—')}</span>
+            </td>
             <td>
                 <div class="actions-cell">
-                    <button class="btn-action btn-edit" title="Edit DSC Details" onclick="openEditModal(${user.id})">
+                    <button class="btn-action btn-edit" title="Edit Sheet Details" onclick="openEditModal(${row.id})">
                         <i class="fa-solid fa-pencil"></i>
                     </button>
-                    ${user.has_dsc ? `
-                        <button class="btn-action btn-remind-wa" title="WhatsApp Reminder" onclick="sendReminder(${user.id}, 'whatsapp')">
-                            <i class="fa-brands fa-whatsapp"></i>
-                        </button>
-                        <button class="btn-action btn-remind-email" title="Email Reminder" onclick="sendReminder(${user.id}, 'email')">
-                            <i class="fa-solid fa-envelope"></i>
-                        </button>
-                    ` : ''}
+                    <button class="btn-action btn-remind-wa" title="WhatsApp Reminder" onclick="sendAlert(${row.id}, 'whatsapp')">
+                        <i class="fa-brands fa-whatsapp"></i>
+                    </button>
+                    <button class="btn-action btn-remind-email" title="Email Reminder" onclick="sendAlert(${row.id}, 'email')">
+                        <i class="fa-solid fa-envelope"></i>
+                    </button>
+                    <button class="btn-action" title="Delete Row" style="color: var(--danger); border-color: rgba(239, 68, 68, 0.15);" onclick="deleteRow(${row.id})">
+                        <i class="fa-solid fa-trash-can"></i>
+                    </button>
                 </div>
             </td>
         `;
@@ -228,16 +255,16 @@ function renderTable(data) {
         els.tableBody.appendChild(tr);
     });
     
-    els.showingEntriesText.textContent = `Showing ${data.length} of ${state.users.length} entries`;
+    els.showingEntriesText.textContent = `Showing ${data.length} of ${state.records.length} entries`;
 }
 
 function setTableLoading(isLoading) {
     if (isLoading) {
         els.tableBody.innerHTML = `
             <tr>
-                <td colspan="8" class="text-center py-5">
+                <td colspan="9" class="text-center py-5">
                     <div class="spinner"></div>
-                    <p class="mt-2 text-muted">Loading DSC records...</p>
+                    <p class="mt-2 text-muted">Loading ledger sheet...</p>
                 </td>
             </tr>
         `;
@@ -247,172 +274,71 @@ function setTableLoading(isLoading) {
 function setTableError(message) {
     els.tableBody.innerHTML = `
         <tr>
-            <td colspan="8" class="text-center py-5 text-danger">
-                <i class="fa-solid fa-triangle-exclamation mb-2" style="font-size: 2rem; display: block;"></i>
-                <p><strong>Failed to load data:</strong></p>
+            <td colspan="9" class="text-center py-5 text-danger">
+                <i class="fa-solid fa-triangle-exclamation mb-2" style="font-size: 2.2rem; display: block;"></i>
+                <p><strong>Database Connection Interrupted:</strong></p>
                 <p class="text-muted" style="max-width: 400px; margin: 8px auto 0;">${escapeHTML(message)}</p>
-                <button class="btn btn-secondary btn-sm mt-3" onclick="loadDashboardData()"><i class="fa-solid fa-rotate"></i> Retry Connection</button>
+                <button class="btn btn-secondary btn-sm mt-3" onclick="loadLedgerData()"><i class="fa-solid fa-rotate"></i> Retry Connection</button>
             </td>
         </tr>
     `;
 }
 
 /* ==========================================================================
-   Search & Filter Event Listeners
+   Spreadsheet Quick-Actions & Controls
    ========================================================================== */
 function setupEventListeners() {
-    // Instant search input on keyup
+    // Instant search filtering
     els.searchInput.addEventListener('input', (e) => {
         state.filters.search = e.target.value;
-        applyFiltersAndRenderTable();
+        applyFiltersAndRenderGrid();
     });
     
-    // Dropdown filters change triggers re-render
+    // Expiry and possession filters
     els.statusFilter.addEventListener('change', (e) => {
         state.filters.status = e.target.value;
-        applyFiltersAndRenderTable();
+        applyFiltersAndRenderGrid();
     });
     
-    els.roleFilter.addEventListener('change', (e) => {
-        state.filters.role = e.target.value;
-        applyFiltersAndRenderTable();
+    els.possessionFilter.addEventListener('change', (e) => {
+        state.filters.possession = e.target.value;
+        applyFiltersAndRenderGrid();
     });
     
-    // Modal controls
+    // Hardware Auto-Detect & Add Trigger
+    if (els.btnDetectRegister) {
+        els.btnDetectRegister.addEventListener('click', handleHardwareRegister);
+    }
+    
+    // CSV Exporter Trigger
+    if (els.btnExportCSV) {
+        els.btnExportCSV.addEventListener('click', exportLedgerToCSV);
+    }
+    
+    // Modal window controls
     els.closeModalBtn.addEventListener('click', closeEditModal);
     els.cancelModalBtn.addEventListener('click', closeEditModal);
-    
-    // Close modal on outside click
     window.addEventListener('click', (e) => {
         if (e.target === els.editModal) {
             closeEditModal();
         }
     });
     
-    // Form submit for DSC edit
     els.editForm.addEventListener('submit', handleFormSubmit);
-    
-    // Auto-detect plugged DSC
-    if (els.btnDetectDsc) {
-        els.btnDetectDsc.addEventListener('click', handleDscAutoDetect);
-    }
 }
 
-/* ==========================================================================
-   Modal Operations
-   ========================================================================== */
-window.openEditModal = function(userId) {
-    const user = state.users.find(u => u.id === userId);
-    if (!user) return;
-    
-    state.editingUserId = userId;
-    els.editUserId.value = user.id;
-    els.editHolderName.value = user.dsc_holder_name || '';
-    els.editExpiryDate.value = user.dsc_expiry_date || '';
-    els.editClass.value = user.dsc_class || '';
-    els.editTokenSerial.value = user.dsc_token_serial || '';
-    
-    // Populate client summary details
-    els.modalClientName.textContent = user.name;
-    els.modalClientEmail.textContent = `${user.email || 'No email'} | ${user.phone || 'No phone'}`;
-    els.modalClientAvatar.textContent = user.name.charAt(0).toUpperCase();
-    
-    els.editModal.classList.add('active');
-};
-
-function closeEditModal() {
-    els.editModal.classList.remove('active');
-    els.editForm.reset();
-    state.editingUserId = null;
-}
-
-async function handleFormSubmit(e) {
-    e.preventDefault();
-    
-    const id = parseInt(els.editUserId.value);
-    const data = {
-        dsc_holder_name: els.editHolderName.value,
-        dsc_expiry_date: els.editExpiryDate.value,
-        dsc_class: els.editClass.value,
-        dsc_token_serial: els.editTokenSerial.value
-    };
+/**
+ * ⚡ "Plug & Register DSC" Action
+ * Contacts local port 12345 to read plugged USB DSC and instantly appends it to the ledger
+ */
+async function handleHardwareRegister() {
+    const originalHTML = els.btnDetectRegister.innerHTML;
     
     try {
-        const response = await API.updateDSC(id, data);
-        if (response.success) {
-            showToast('DSC details updated successfully', 'success');
-            closeEditModal();
-            // Reload all data so that counters reflect new state
-            loadDashboardData();
-        }
-    } catch (error) {
-        showToast(error.message || 'Error updating DSC details', 'error');
-    }
-}
-
-/* ==========================================================================
-   Reminders & Alerts Actions
-   ========================================================================== */
-window.sendReminder = function(userId, method) {
-    const user = state.users.find(u => u.id === userId);
-    if (!user) return;
-    
-    if (!user.dsc_expiry_date) {
-        showToast("Expiry date is required to send reminders.", "error");
-        return;
-    }
-    
-    const expiryDateFormatted = new Date(user.dsc_expiry_date).toLocaleDateString('en-IN', {
-        day: '2-digit', month: 'long', year: 'numeric'
-    });
-    
-    const holder = user.dsc_holder_name || user.name;
-    
-    if (method === 'whatsapp') {
-        if (!user.phone) {
-            showToast("No phone number registered for this user.", "error");
-            return;
-        }
+        els.btnDetectRegister.disabled = true;
+        els.btnDetectRegister.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> Reading Hardware...';
         
-        // Clean phone number (strip whitespace and format for India code +91 if needed)
-        let phone = user.phone.replace(/[^0-9]/g, '');
-        if (phone.length === 10) {
-            phone = '91' + phone;
-        }
-        
-        const message = `Hello ${user.name},\n\nThis is a friendly reminder from *Akanksha Shashank & Associates* regarding your Digital Signature Certificate (DSC) of holder *${holder}*. It is scheduled to expire on *${expiryDateFormatted}*.\n\nPlease reply or get in touch with us at your earliest convenience so we can initiate the renewal process and prevent any downtime or delays in your statutory filing obligations.\n\nThank you!`;
-        const waUrl = `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
-        
-        window.open(waUrl, '_blank');
-        showToast(`Opened WhatsApp Reminder to ${user.name}`, 'success');
-        
-    } else if (method === 'email') {
-        if (!user.email) {
-            showToast("No email address registered for this user.", "error");
-            return;
-        }
-        
-        const subject = `IMPORTANT: Digital Signature Certificate (DSC) Expiry Reminder - ${holder}`;
-        const body = `Dear ${user.name},\n\nThis is an automated reminder regarding the Digital Signature Certificate (DSC) registered under holder "${holder}". Our records show that this certificate is scheduled to expire on ${expiryDateFormatted}.\n\nTo ensure there are no interruptions in your tax e-filings, MCA compliance, or other regulatory submissions, we kindly request you to authorize the renewal process. Please confirm if we should proceed with the DSC renewal.\n\nWarm regards,\nAkanksha Shashank & Associates`;
-        
-        const mailUrl = `mailto:${user.email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-        
-        window.open(mailUrl);
-        showToast(`Drafted Email Reminder to ${user.email}`, 'success');
-    }
-};
-
-/* ==========================================================================
-   DSC Auto-Detection via Local Helper Executable (Port 12345)
-   ========================================================================== */
-async function handleDscAutoDetect() {
-    const originalHTML = els.btnDetectDsc.innerHTML;
-    
-    try {
-        els.btnDetectDsc.disabled = true;
-        els.btnDetectDsc.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Detecting...';
-        
-        // Query the local C# DscHelper HTTP listener running on port 12345
+        // 1. Fetch from local C# port listener
         const response = await fetch('http://localhost:12345/get-dsc-info', {
             method: 'GET',
             mode: 'cors'
@@ -421,35 +347,232 @@ async function handleDscAutoDetect() {
         const data = await response.json();
         
         if (data.success) {
-            // Autofill the input fields
-            els.editHolderName.value = data.holderName || '';
-            els.editExpiryDate.value = data.expiryDate || '';
-            els.editTokenSerial.value = data.serialNumber || '';
+            // 2. Submit to PHP API to register/update in the dsc_registry table
+            const registerData = {
+                holder_name: data.holderName,
+                serial_number: data.serialNumber,
+                expiry_date: data.expiryDate,
+                dsc_class: data.class || 'Class 3'
+            };
             
-            // Map the DSC Class selection
-            if (data.class && (data.class.includes('Class 3') || data.class.includes('3'))) {
-                els.editClass.value = 'Class 3';
-            } else if (data.class && (data.class.includes('Class 2') || data.class.includes('2'))) {
-                els.editClass.value = 'Class 2';
-            } else {
-                els.editClass.value = 'Class 3';
+            const serverResponse = await API.registerDSC(registerData);
+            
+            if (serverResponse.success) {
+                if (serverResponse.data.is_new) {
+                    showToast(`Successfully registered new DSC for: ${data.holderName}!`, 'success');
+                } else {
+                    showToast(`Updated expiry parameters for existing token: ${data.holderName}`, 'success');
+                }
+                
+                // Refresh table to display the appended/updated row
+                await loadLedgerData();
+                
+                // Highlight and open the edit drawer for the newly added/updated row so they can enter custom fields
+                openEditModal(serverResponse.data.id);
             }
-            
-            showToast('DSC details auto-detected and pre-filled!', 'success');
         } else {
-            showToast(data.message || 'Failed to detect DSC. Make sure the USB token is plugged in.', 'error');
+            showToast(data.message || 'Make sure the USB DSC token is plugged in.', 'error');
         }
     } catch (error) {
-        console.error('DSC Detection Error:', error);
-        showToast('Connection failed. Make sure DscHelper.exe is running on port 12345.', 'error');
+        console.error('DSC Registration Error:', error);
+        showToast('Connection failed. Make sure your background DSC helper is active.', 'error');
     } finally {
-        els.btnDetectDsc.disabled = false;
-        els.btnDetectDsc.innerHTML = originalHTML;
+        els.btnDetectRegister.disabled = false;
+        els.btnDetectRegister.innerHTML = originalHTML;
     }
 }
 
+/**
+ * 📥 "Export Sheet (CSV)" Action
+ * Compiles ledger rows into standard CSV spreadsheet file and downloads it
+ */
+function exportLedgerToCSV() {
+    if (state.records.length === 0) {
+        showToast('Ledger sheet is currently empty.', 'error');
+        return;
+    }
+    
+    // Header columns
+    const headers = ['DSC Holder Name', 'Associated Client/Company', 'Token PIN', 'Expiry Date', 'Class', 'Token Serial', 'Possession Status', 'Storage Location', 'Email', 'Phone'];
+    
+    // Row mappings
+    const rows = state.records.map(row => [
+        row.holder_name || '',
+        row.client_name || '',
+        row.pin || '',
+        row.expiry_date || '',
+        row.dsc_class || 'Class 3',
+        row.serial_number || '',
+        row.token_status || 'In Office',
+        row.location || '',
+        row.email || '',
+        row.phone || ''
+    ]);
+    
+    // Combine to CSV format
+    const csvContent = [
+        headers.join(','),
+        ...rows.map(e => e.map(val => `"${val.replace(/"/g, '""')}"`).join(','))
+    ].join('\n');
+    
+    // Trigger browser download
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.setAttribute('href', url);
+    link.setAttribute('download', `DSC_Ledger_Registry_${new Date().toISOString().split('T')[0]}.csv`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    
+    showToast('Ledger sheet successfully exported as CSV!', 'success');
+}
+
 /* ==========================================================================
-   Utilities (Toasts & Escaping)
+   Modal Drawer Forms
+   ========================================================================== */
+window.openEditModal = function(id) {
+    const row = state.records.find(r => r.id === id);
+    if (!row) return;
+    
+    state.editingId = id;
+    els.editUserId.value = row.id;
+    
+    // Map editable custom fields
+    els.editClientName.value = row.client_name || '';
+    els.editPin.value = row.pin || '';
+    els.editTokenStatus.value = row.token_status || 'In Office';
+    els.editLocation.value = row.location || '';
+    els.editEmail.value = row.email || '';
+    els.editPhone.value = row.phone || '';
+    
+    // Map protected hardware fields
+    els.editHolderName.value = row.holder_name;
+    els.editExpiryDate.value = row.expiry_date;
+    els.editClass.value = row.dsc_class || 'Class 3';
+    els.editTokenSerial.value = row.serial_number;
+    
+    // Modal Summary Header
+    els.modalClientName.textContent = row.client_name || 'Unassigned Token';
+    els.modalClientEmail.textContent = `Holder: ${row.holder_name} | Serial: ${row.serial_number.substring(0, 12)}...`;
+    
+    els.editModal.classList.add('active');
+};
+
+function closeEditModal() {
+    els.editModal.classList.remove('active');
+    els.editForm.reset();
+    state.editingId = null;
+}
+
+async function handleFormSubmit(e) {
+    e.preventDefault();
+    
+    const id = parseInt(els.editUserId.value);
+    const payload = {
+        client_name: els.editClientName.value,
+        pin: els.editPin.value,
+        token_status: els.editTokenStatus.value,
+        location: els.editLocation.value,
+        email: els.editEmail.value,
+        phone: els.editPhone.value,
+        
+        // Also allow manual edits of core values
+        holder_name: els.editHolderName.value,
+        expiry_date: els.editExpiryDate.value,
+        dsc_class: els.editClass.value,
+        serial_number: els.editTokenSerial.value
+    };
+    
+    try {
+        const response = await API.updateDSC(id, payload);
+        if (response.success) {
+            showToast('Ledger sheet row updated successfully', 'success');
+            closeEditModal();
+            loadLedgerData();
+        }
+    } catch (error) {
+        showToast(error.message || 'Failed to save changes.', 'error');
+    }
+}
+
+/**
+ * 🗑️ Row Deletion Action
+ */
+window.deleteRow = async function(id) {
+    const row = state.records.find(r => r.id === id);
+    if (!row) return;
+    
+    const label = row.client_name ? `${row.client_name} (${row.holder_name})` : row.holder_name;
+    
+    if (confirm(`Are you sure you want to delete the DSC ledger record for "${label}"?\nThis action cannot be undone.`)) {
+        try {
+            const response = await API.deleteDSC(id);
+            if (response.success) {
+                showToast('Ledger row deleted successfully', 'success');
+                loadLedgerData();
+            }
+        } catch (error) {
+            showToast(error.message || 'Error deleting row', 'error');
+        }
+    }
+};
+
+/* ==========================================================================
+   Reminders & Notifications (WhatsApp & Email Alerts)
+   ========================================================================== */
+window.sendAlert = function(id, method) {
+    const row = state.records.find(r => r.id === id);
+    if (!row) return;
+    
+    if (!row.expiry_date) {
+        showToast("Expiry date is required to draft reminders.", "error");
+        return;
+    }
+    
+    const expiryFormatted = new Date(row.expiry_date).toLocaleDateString('en-IN', {
+        day: '2-digit', month: 'long', year: 'numeric'
+    });
+    
+    const client = row.client_name || row.holder_name;
+    const holder = row.holder_name;
+    
+    if (method === 'whatsapp') {
+        if (!row.phone) {
+            showToast("No phone number registered for this ledger entry.", "error");
+            return;
+        }
+        
+        let phone = row.phone.replace(/[^0-9]/g, '');
+        if (phone.length === 10) {
+            phone = '91' + phone;
+        }
+        
+        const message = `Hello ${client},\n\nThis is a reminder from *Akanksha Shashank & Associates* regarding your Digital Signature Certificate (DSC) of holder *${holder}*. It is scheduled to expire on *${expiryFormatted}*.\n\nPlease contact us as soon as possible to proceed with the renewal process and prevent any e-filing delays.\n\nThank you!`;
+        const waUrl = `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
+        
+        window.open(waUrl, '_blank');
+        showToast(`WhatsApp reminder drafted to ${client}`, 'success');
+        
+    } else if (method === 'email') {
+        if (!row.email) {
+            showToast("No email registered for this ledger entry.", "error");
+            return;
+        }
+        
+        const subject = `IMPORTANT: DSC Expiry Alert - Holder: ${holder}`;
+        const body = `Dear ${client},\n\nThis is a notification from Akanksha Shashank & Associates that your Digital Signature Certificate (DSC) under holder name "${holder}" is expiring on ${expiryFormatted}.\n\nTo ensure your Income Tax, GST, or MCA company law filings continue without interruption, please confirm if we should initiate the DSC renewal on your behalf.\n\nWarm regards,\nAkanksha Shashank & Associates`;
+        
+        const mailUrl = `mailto:${row.email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+        
+        window.open(mailUrl);
+        showToast(`Email drafted successfully to ${row.email}`, 'success');
+    }
+};
+
+/* ==========================================================================
+   Global Utilities (Escaping & Toasts)
    ========================================================================== */
 function showToast(message, type = 'info') {
     const toast = document.createElement('div');
@@ -466,11 +589,10 @@ function showToast(message, type = 'info') {
     
     els.toastContainer.appendChild(toast);
     
-    // Trigger transition Reflow
+    // Trigger transition reflow
     toast.offsetHeight; 
     toast.classList.add('show');
     
-    // Auto-remove after 4 seconds
     setTimeout(() => {
         toast.classList.remove('show');
         setTimeout(() => toast.remove(), 250);

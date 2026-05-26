@@ -1,17 +1,43 @@
 <?php
 /**
- * DSC Reader API
- * Handles database operations for displaying and editing DSC records
+ * Standalone DSC Registry API
+ * Performs complete CRUD operations on the dsc_registry table.
+ * Automatically handles schema creation on initialization.
  */
 require_once 'config.php';
 
-// Disable error display in production JSON responses, but log them
 ini_set('display_errors', 0);
 error_reporting(E_ALL);
 
 $db = getDBConnection();
 if (!$db) {
-    jsonResponse(false, 'Unable to connect to the database. Please check your database settings and .env path.', null, 500);
+    jsonResponse(false, 'Unable to connect to the database. Please check your database settings or .env configuration.', null, 500);
+}
+
+// ------------------------------------------------------------------
+// AUTOMATIC DATABASE SCHEMA SETUP
+// ------------------------------------------------------------------
+try {
+    $db->exec("CREATE TABLE IF NOT EXISTS `dsc_registry` (
+        `id` INT AUTO_INCREMENT PRIMARY KEY,
+        `holder_name` VARCHAR(150) NOT NULL,
+        `serial_number` VARCHAR(150) NOT NULL UNIQUE,
+        `dsc_class` VARCHAR(50) NOT NULL DEFAULT 'Class 3',
+        `expiry_date` DATE NOT NULL,
+        `client_name` VARCHAR(150) NULL,
+        `pin` VARCHAR(100) NULL,
+        `email` VARCHAR(100) NULL,
+        `phone` VARCHAR(30) NULL,
+        `token_status` VARCHAR(50) NOT NULL DEFAULT 'In Office',
+        `location` VARCHAR(100) NULL,
+        `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        INDEX (`expiry_date`),
+        INDEX (`holder_name`),
+        INDEX (`serial_number`)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;");
+} catch (PDOException $e) {
+    jsonResponse(false, 'Failed to initialize database table dsc_registry: ' . $e->getMessage(), null, 500);
 }
 
 $action = $_GET['action'] ?? 'list';
@@ -19,58 +45,99 @@ $action = $_GET['action'] ?? 'list';
 switch ($action) {
     case 'list':
         try {
-            // Fetch all users with their basic info and DSC details
-            $query = "SELECT id, name, email, phone, role, pan_number, gst_number, 
-                             dsc_holder_name, dsc_expiry_date, dsc_class, dsc_token_serial 
-                      FROM users 
-                      ORDER BY name ASC";
-            $stmt = $db->query($query);
-            $users = $stmt->fetchAll();
+            $stmt = $db->query("SELECT * FROM dsc_registry ORDER BY expiry_date ASC");
+            $records = $stmt->fetchAll();
             
-            // Calculate some useful stats for the client dashboard
+            // Calculate stats
             $stats = [
-                'total_users' => count($users),
-                'with_dsc' => 0,
-                'expired_dsc' => 0,
-                'expiring_soon' => 0, // Expiring in next 30 days
-                'active_dsc' => 0
+                'total' => count($records),
+                'active' => 0,
+                'expiring_soon' => 0,
+                'expired' => 0
             ];
             
             $today = new DateTime();
             $thirtyDaysFromNow = (new DateTime())->modify('+30 days');
             
-            foreach ($users as &$user) {
-                $user['has_dsc'] = !empty($user['dsc_holder_name']) || !empty($user['dsc_expiry_date']);
+            foreach ($records as &$row) {
+                $expiry = new DateTime($row['expiry_date']);
                 
-                if ($user['has_dsc']) {
-                    $stats['with_dsc']++;
-                    
-                    if (!empty($user['dsc_expiry_date'])) {
-                        $expiry = new DateTime($user['dsc_expiry_date']);
-                        if ($expiry < $today) {
-                            $user['dsc_status'] = 'expired';
-                            $stats['expired_dsc']++;
-                        } elseif ($expiry <= $thirtyDaysFromNow) {
-                            $user['dsc_status'] = 'expiring_soon';
-                            $stats['expiring_soon']++;
-                        } else {
-                            $user['dsc_status'] = 'active';
-                            $stats['active_dsc']++;
-                        }
-                    } else {
-                        $user['dsc_status'] = 'incomplete';
-                    }
+                if ($expiry < $today) {
+                    $row['status'] = 'expired';
+                    $stats['expired']++;
+                } elseif ($expiry <= $thirtyDaysFromNow) {
+                    $row['status'] = 'expiring_soon';
+                    $stats['expiring_soon']++;
                 } else {
-                    $user['dsc_status'] = 'none';
+                    $row['status'] = 'active';
+                    $stats['active']++;
                 }
             }
             
             jsonResponse(true, 'DSC records loaded successfully', [
-                'users' => $users,
+                'records' => $records,
                 'stats' => $stats
             ]);
         } catch (PDOException $e) {
-            jsonResponse(false, 'Database error: ' . $e->getMessage(), null, 500);
+            jsonResponse(false, 'Database fetch error: ' . $e->getMessage(), null, 500);
+        }
+        break;
+        
+    case 'register':
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+            jsonResponse(false, 'Invalid request method', null, 405);
+        }
+        
+        $input = json_decode(file_get_contents('php://input'), true) ?? $_POST;
+        
+        $holder_name = isset($input['holder_name']) ? trim($input['holder_name']) : '';
+        $serial_number = isset($input['serial_number']) ? trim($input['serial_number']) : '';
+        $expiry_date = isset($input['expiry_date']) ? trim($input['expiry_date']) : '';
+        $dsc_class = isset($input['dsc_class']) ? trim($input['dsc_class']) : 'Class 3';
+        
+        if (empty($holder_name) || empty($serial_number) || empty($expiry_date)) {
+            jsonResponse(false, 'Missing hardware DSC details. Please ensure the token is plugged in.', null, 400);
+        }
+        
+        try {
+            // Check if the DSC token serial number already exists in the registry
+            $checkStmt = $db->prepare("SELECT id, client_name, token_status, location FROM dsc_registry WHERE serial_number = ?");
+            $checkStmt->execute([$serial_number]);
+            $existing = $checkStmt->fetch();
+            
+            if ($existing) {
+                // If it already exists, automatically update its expiry date and holder name (e.g., renewed certificate)
+                $updateStmt = $db->prepare("UPDATE dsc_registry 
+                                            SET holder_name = ?, expiry_date = ?, dsc_class = ? 
+                                            WHERE id = ?");
+                $updateStmt->execute([$holder_name, $expiry_date, $dsc_class, $existing['id']]);
+                
+                jsonResponse(true, 'Existing DSC record updated successfully', [
+                    'id' => $existing['id'],
+                    'holder_name' => $holder_name,
+                    'serial_number' => $serial_number,
+                    'expiry_date' => $expiry_date,
+                    'dsc_class' => $dsc_class,
+                    'is_new' => false
+                ]);
+            } else {
+                // Insert a brand new row in the spreadsheet
+                $insertStmt = $db->prepare("INSERT INTO dsc_registry (holder_name, serial_number, expiry_date, dsc_class) 
+                                            VALUES (?, ?, ?, ?)");
+                $insertStmt->execute([$holder_name, $serial_number, $expiry_date, $dsc_class]);
+                $newId = $db->lastInsertId();
+                
+                jsonResponse(true, 'New DSC token registered successfully', [
+                    'id' => $newId,
+                    'holder_name' => $holder_name,
+                    'serial_number' => $serial_number,
+                    'expiry_date' => $expiry_date,
+                    'dsc_class' => $dsc_class,
+                    'is_new' => true
+                ]);
+            }
+        } catch (PDOException $e) {
+            jsonResponse(false, 'Failed to save DSC token: ' . $e->getMessage(), null, 500);
         }
         break;
         
@@ -79,61 +146,98 @@ switch ($action) {
             jsonResponse(false, 'Invalid request method', null, 405);
         }
         
-        $input = json_decode(file_get_contents('php://input'), true);
-        if (!$input) {
-            // Fallback to standard POST parameters if JSON parse fails
-            $input = $_POST;
-        }
+        $input = json_decode(file_get_contents('php://input'), true) ?? $_POST;
         
         $id = isset($input['id']) ? intval($input['id']) : 0;
-        $dsc_holder_name = isset($input['dsc_holder_name']) ? trim($input['dsc_holder_name']) : null;
-        $dsc_expiry_date = isset($input['dsc_expiry_date']) ? trim($input['dsc_expiry_date']) : null;
+        $client_name = isset($input['client_name']) ? trim($input['client_name']) : null;
+        $pin = isset($input['pin']) ? trim($input['pin']) : null;
+        $email = isset($input['email']) ? trim($input['email']) : null;
+        $phone = isset($input['phone']) ? trim($input['phone']) : null;
+        $token_status = isset($input['token_status']) ? trim($input['token_status']) : 'In Office';
+        $location = isset($input['location']) ? trim($input['location']) : null;
+        
+        // Allow updating core hardware fields via edit form as well
+        $holder_name = isset($input['holder_name']) ? trim($input['holder_name']) : null;
+        $expiry_date = isset($input['expiry_date']) ? trim($input['expiry_date']) : null;
         $dsc_class = isset($input['dsc_class']) ? trim($input['dsc_class']) : null;
-        $dsc_token_serial = isset($input['dsc_token_serial']) ? trim($input['dsc_token_serial']) : null;
+        $serial_number = isset($input['serial_number']) ? trim($input['serial_number']) : null;
         
         if ($id <= 0) {
-            jsonResponse(false, 'Valid User ID is required', null, 400);
+            jsonResponse(false, 'Valid ID is required', null, 400);
         }
         
         try {
-            // Verify if the user exists
-            $checkStmt = $db->prepare("SELECT id FROM users WHERE id = ?");
+            // Check if record exists
+            $checkStmt = $db->prepare("SELECT id FROM dsc_registry WHERE id = ?");
             $checkStmt->execute([$id]);
             if (!$checkStmt->fetch()) {
-                jsonResponse(false, 'User not found', null, 404);
+                jsonResponse(false, 'DSC record not found', null, 404);
             }
             
-            // Format empty inputs to null
-            $dsc_holder_name = ($dsc_holder_name === '') ? null : $dsc_holder_name;
-            $dsc_expiry_date = ($dsc_expiry_date === '') ? null : $dsc_expiry_date;
-            $dsc_class = ($dsc_class === '') ? null : $dsc_class;
-            $dsc_token_serial = ($dsc_token_serial === '') ? null : $dsc_token_serial;
+            // Format empty values to null
+            $client_name = ($client_name === '') ? null : $client_name;
+            $pin = ($pin === '') ? null : $pin;
+            $email = ($email === '') ? null : $email;
+            $phone = ($phone === '') ? null : $phone;
+            $location = ($location === '') ? null : $location;
             
-            // Update user DSC details
-            $updateQuery = "UPDATE users 
-                            SET dsc_holder_name = ?, 
-                                dsc_expiry_date = ?, 
-                                dsc_class = ?, 
-                                dsc_token_serial = ? 
-                            WHERE id = ?";
-            $updateStmt = $db->prepare($updateQuery);
-            $updateStmt->execute([
-                $dsc_holder_name,
-                $dsc_expiry_date,
-                $dsc_class,
-                $dsc_token_serial,
-                $id
-            ]);
+            $updateQuery = "UPDATE dsc_registry 
+                            SET client_name = ?, 
+                                pin = ?, 
+                                email = ?, 
+                                phone = ?, 
+                                token_status = ?, 
+                                location = ?";
+            $params = [$client_name, $pin, $email, $phone, $token_status, $location];
             
-            jsonResponse(true, 'DSC details updated successfully', [
-                'id' => $id,
-                'dsc_holder_name' => $dsc_holder_name,
-                'dsc_expiry_date' => $dsc_expiry_date,
-                'dsc_class' => $dsc_class,
-                'dsc_token_serial' => $dsc_token_serial
-            ]);
+            if ($holder_name !== null) {
+                $updateQuery .= ", holder_name = ?";
+                $params[] = $holder_name;
+            }
+            if ($expiry_date !== null) {
+                $updateQuery .= ", expiry_date = ?";
+                $params[] = $expiry_date;
+            }
+            if ($dsc_class !== null) {
+                $updateQuery .= ", dsc_class = ?";
+                $params[] = $dsc_class;
+            }
+            if ($serial_number !== null) {
+                $updateQuery .= ", serial_number = ?";
+                $params[] = $serial_number;
+            }
+            
+            $updateQuery .= " WHERE id = ?";
+            $params[] = $id;
+            
+            $stmt = $db->prepare($updateQuery);
+            $stmt->execute($params);
+            
+            jsonResponse(true, 'DSC record updated successfully');
         } catch (PDOException $e) {
-            jsonResponse(false, 'Failed to update database: ' . $e->getMessage(), null, 500);
+            jsonResponse(false, 'Failed to update DSC: ' . $e->getMessage(), null, 500);
+        }
+        break;
+        
+    case 'delete':
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST' && $_SERVER['REQUEST_METHOD'] !== 'DELETE') {
+            jsonResponse(false, 'Invalid request method', null, 405);
+        }
+        
+        $input = json_decode(file_get_contents('php://input'), true) ?? $_POST ?? $_GET;
+        $id = isset($input['id']) ? intval($input['id']) : 0;
+        
+        if ($id <= 0) {
+            jsonResponse(false, 'Valid ID is required for deletion', null, 400);
+        }
+        
+        try {
+            $stmt = $db->prepare("DELETE FROM dsc_registry WHERE id = ?");
+            $stmt->execute([$id]);
+            
+            jsonResponse(true, 'DSC record deleted successfully');
+        } catch (PDOException $e) {
+            jsonResponse(false, 'Failed to delete DSC record: ' . $e->getMessage(), null, 500);
         }
         break;
         
