@@ -138,20 +138,19 @@
                         <thead>
                             <tr>
                                 <th>DSC Holder Name</th>
-                                <th>Client/Entity Name</th>
-                                <th>Token PIN</th>
+                                <th>Email</th>
+                                <th>Phone</th>
                                 <th>Expiry Date</th>
                                 <th>Class</th>
                                 <th>Token Serial</th>
                                 <th>Possession</th>
-                                <th>Storage Location</th>
                                 <th class="text-right">Actions</th>
                             </tr>
                         </thead>
                         <tbody id="table-body">
                             <!-- Injected by JavaScript -->
                             <tr>
-                                <td colspan="9" class="text-center py-5">
+                                <td colspan="8" class="text-center py-5">
                                     <div class="spinner"></div>
                                     <p class="mt-2 text-muted">Loading DSC ledger records...</p>
                                 </td>
@@ -189,30 +188,12 @@
                     </div>
 
                     <div class="form-grid">
-                        <div class="form-group full-width">
-                            <label for="edit-client-name">Associated Client / Company Name</label>
-                            <input type="text" id="edit-client-name" placeholder="E.g., Akanksha Shashank & Associates">
-                        </div>
-
-                        <div class="form-group">
-                            <label for="edit-pin">Token PIN / Password</label>
-                            <div style="position: relative;">
-                                <input type="text" id="edit-pin" placeholder="Enter USB PIN" style="width: 100%; padding-right: 36px;">
-                                <i class="fa-solid fa-key" style="position: absolute; right: 12px; top: 50%; transform: translateY(-50%); color: var(--text-muted); pointer-events: none;"></i>
-                            </div>
-                        </div>
-
                         <div class="form-group">
                             <label for="edit-token-status">Possession Status</label>
                             <select id="edit-token-status">
                                 <option value="In Office">In Office</option>
                                 <option value="With Client">With Client</option>
                             </select>
-                        </div>
-
-                        <div class="form-group">
-                            <label for="edit-location">Storage Location (e.g. Cabinet / Drawer)</label>
-                            <input type="text" id="edit-location" placeholder="E.g., Cabinet 2, Shelf 3">
                         </div>
 
                         <div class="form-group">

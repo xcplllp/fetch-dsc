@@ -48,10 +48,7 @@ const els = {
     editUserId: document.getElementById('edit-user-id'),
     
     // Editable Spreadsheet Metadata Columns
-    editClientName: document.getElementById('edit-client-name'),
-    editPin: document.getElementById('edit-pin'),
     editTokenStatus: document.getElementById('edit-token-status'),
-    editLocation: document.getElementById('edit-location'),
     editEmail: document.getElementById('edit-email'),
     editPhone: document.getElementById('edit-phone'),
     
@@ -186,7 +183,7 @@ function renderGrid(data) {
     if (data.length === 0) {
         els.tableBody.innerHTML = `
             <tr>
-                <td colspan="9" class="text-center py-5 text-muted">
+                <td colspan="8" class="text-center py-5 text-muted">
                     <i class="fa-solid fa-folder-open mb-2" style="font-size: 2.2rem; display: block; opacity: 0.4;"></i>
                     No ledger records found matching the filters.
                 </td>
@@ -225,12 +222,10 @@ function renderGrid(data) {
                 ${escapeHTML(row.holder_name)}
             </td>
             <td>
-                <span class="client-name-cell" style="color: var(--primary);">${escapeHTML(row.client_name || '—')}</span>
+                <span class="text-muted" style="font-weight: 500;">${escapeHTML(row.email || '—')}</span>
             </td>
             <td>
-                <span style="font-family: monospace; font-size: 0.85rem; background: rgba(0,0,0,0.12); padding: 4px 8px; border-radius: 4px; border: 1px solid var(--panel-border); font-weight: 600;">
-                    ${escapeHTML(row.pin || '—')}
-                </span>
+                <span class="text-muted" style="font-weight: 500;">${escapeHTML(row.phone || '—')}</span>
             </td>
             <td class="client-name-cell">${expiryDisplay}</td>
             <td><span class="text-muted" style="font-size: 0.85rem;">${escapeHTML(row.dsc_class || 'Class 3')}</span></td>
@@ -238,9 +233,6 @@ function renderGrid(data) {
                 ${escapeHTML(row.serial_number).substring(0, 16)}...
             </td>
             <td>${possessionBadge}</td>
-            <td>
-                <span class="text-muted" style="font-weight: 500;"><i class="fa-solid fa-box-open mr-1" style="margin-right:4px; font-size: 0.8rem;"></i> ${escapeHTML(row.location || '—')}</span>
-            </td>
             <td>
                 <div class="actions-cell">
                     <button class="btn-action btn-edit" title="Edit Sheet Details" onclick="openEditModal(${row.id})">
@@ -427,20 +419,17 @@ function exportLedgerToCSV() {
     }
     
     // Header columns
-    const headers = ['DSC Holder Name', 'Associated Client/Company', 'Token PIN', 'Expiry Date', 'Class', 'Token Serial', 'Possession Status', 'Storage Location', 'Email', 'Phone'];
+    const headers = ['DSC Holder Name', 'Email', 'Phone', 'Expiry Date', 'Class', 'Token Serial', 'Possession Status'];
     
     // Row mappings
     const rows = state.records.map(row => [
         row.holder_name || '',
-        row.client_name || '',
-        row.pin || '',
+        row.email || '',
+        row.phone || '',
         row.expiry_date || '',
         row.dsc_class || 'Class 3',
         row.serial_number || '',
-        row.token_status || 'In Office',
-        row.location || '',
-        row.email || '',
-        row.phone || ''
+        row.token_status || 'In Office'
     ]);
     
     // Combine to CSV format
@@ -474,10 +463,7 @@ window.openEditModal = function(id) {
     els.editUserId.value = row.id;
     
     // Map editable custom fields
-    els.editClientName.value = row.client_name || '';
-    els.editPin.value = row.pin || '';
     els.editTokenStatus.value = row.token_status || 'In Office';
-    els.editLocation.value = row.location || '';
     els.editEmail.value = row.email || '';
     els.editPhone.value = row.phone || '';
     
@@ -488,8 +474,8 @@ window.openEditModal = function(id) {
     els.editTokenSerial.value = row.serial_number;
     
     // Modal Summary Header
-    els.modalClientName.textContent = row.client_name || 'Unassigned Token';
-    els.modalClientEmail.textContent = `Holder: ${row.holder_name} | Serial: ${row.serial_number.substring(0, 12)}...`;
+    els.modalClientName.textContent = row.holder_name || 'Unassigned Token';
+    els.modalClientEmail.textContent = `Serial: ${row.serial_number.substring(0, 12)}...`;
     
     els.editModal.classList.add('active');
 };
@@ -520,10 +506,7 @@ async function handleFormSubmit(e) {
     
     const id = parseInt(els.editUserId.value);
     const payload = {
-        client_name: els.editClientName.value,
-        pin: els.editPin.value,
         token_status: els.editTokenStatus.value,
-        location: els.editLocation.value,
         email: els.editEmail.value,
         phone: els.editPhone.value,
         
