@@ -289,21 +289,27 @@ function setTableError(message) {
    ========================================================================== */
 function setupEventListeners() {
     // Instant search filtering
-    els.searchInput.addEventListener('input', (e) => {
-        state.filters.search = e.target.value;
-        applyFiltersAndRenderGrid();
-    });
+    if (els.searchInput) {
+        els.searchInput.addEventListener('input', (e) => {
+            state.filters.search = e.target.value;
+            applyFiltersAndRenderGrid();
+        });
+    }
     
     // Expiry and possession filters
-    els.statusFilter.addEventListener('change', (e) => {
-        state.filters.status = e.target.value;
-        applyFiltersAndRenderGrid();
-    });
+    if (els.statusFilter) {
+        els.statusFilter.addEventListener('change', (e) => {
+            state.filters.status = e.target.value;
+            applyFiltersAndRenderGrid();
+        });
+    }
     
-    els.possessionFilter.addEventListener('change', (e) => {
-        state.filters.possession = e.target.value;
-        applyFiltersAndRenderGrid();
-    });
+    if (els.possessionFilter) {
+        els.possessionFilter.addEventListener('change', (e) => {
+            state.filters.possession = e.target.value;
+            applyFiltersAndRenderGrid();
+        });
+    }
     
     // Hardware Auto-Detect & Add Trigger
     if (els.btnDetectRegister) {
@@ -316,15 +322,21 @@ function setupEventListeners() {
     }
     
     // Modal window controls
-    els.closeModalBtn.addEventListener('click', closeEditModal);
-    els.cancelModalBtn.addEventListener('click', closeEditModal);
+    if (els.closeModalBtn) {
+        els.closeModalBtn.addEventListener('click', closeEditModal);
+    }
+    if (els.cancelModalBtn) {
+        els.cancelModalBtn.addEventListener('click', closeEditModal);
+    }
     window.addEventListener('click', (e) => {
         if (e.target === els.editModal) {
             closeEditModal();
         }
     });
     
-    els.editForm.addEventListener('submit', handleFormSubmit);
+    if (els.editForm) {
+        els.editForm.addEventListener('submit', handleFormSubmit);
+    }
 }
 
 /**
