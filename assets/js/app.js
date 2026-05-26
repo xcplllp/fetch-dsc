@@ -24,6 +24,12 @@ const els = {
     // Quick Actions
     btnDetectRegister: document.getElementById('btn-detect-register'),
     btnExportCSV: document.getElementById('btn-export-csv'),
+    btnHelp: document.getElementById('btn-help'),
+    
+    // Help Modal
+    helpModal: document.getElementById('help-modal'),
+    closeHelpBtn: document.getElementById('close-help-btn'),
+    closeHelpGuideBtn: document.getElementById('close-help-guide-btn'),
     
     // Filters & Search
     searchInput: document.getElementById('search-input'),
@@ -333,7 +339,21 @@ function setupEventListeners() {
         if (e.target === els.editModal) {
             closeEditModal();
         }
+        if (e.target === els.helpModal) {
+            closeHelpModal();
+        }
     });
+    
+    // Help Modal Controls
+    if (els.btnHelp) {
+        els.btnHelp.addEventListener('click', openHelpModal);
+    }
+    if (els.closeHelpBtn) {
+        els.closeHelpBtn.addEventListener('click', closeHelpModal);
+    }
+    if (els.closeHelpGuideBtn) {
+        els.closeHelpGuideBtn.addEventListener('click', closeHelpModal);
+    }
     
     if (els.editForm) {
         els.editForm.addEventListener('submit', handleFormSubmit);
@@ -473,6 +493,21 @@ window.openEditModal = function(id) {
     
     els.editModal.classList.add('active');
 };
+
+/* ==========================================================================
+   Help & Setup Guide Modal Operations
+   ========================================================================== */
+function openHelpModal() {
+    if (els.helpModal) {
+        els.helpModal.classList.add('active');
+    }
+}
+
+function closeHelpModal() {
+    if (els.helpModal) {
+        els.helpModal.classList.remove('active');
+    }
+}
 
 function closeEditModal() {
     els.editModal.classList.remove('active');

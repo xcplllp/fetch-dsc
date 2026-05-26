@@ -28,6 +28,10 @@
             </div>
             
             <div class="header-actions">
+                <!-- PC Setup Guide Button -->
+                <button id="btn-help" class="btn btn-secondary btn-sm" title="Setup Local DSC Helper" style="margin-right: 8px;">
+                    <i class="fa-solid fa-circle-question"></i> PC Setup Guide
+                </button>
                 <!-- Theme Toggle -->
                 <button id="theme-toggle" class="btn-icon" title="Toggle Light/Dark Mode">
                     <i class="fa-solid fa-sun"></i>
@@ -251,6 +255,62 @@
                     <button type="submit" class="btn btn-primary" style="background: linear-gradient(135deg, #a855f7, #6366f1); border: none;">Save Sheet Row</button>
                 </div>
             </form>
+        </div>
+    </div>
+
+    <!-- Help / Setup Guide Modal -->
+    <div class="modal-backdrop" id="help-modal">
+        <div class="modal-panel glass-panel" style="max-width: 600px;">
+            <div class="modal-header" style="background: rgba(168, 85, 247, 0.05);">
+                <h3><i class="fa-solid fa-circle-question"></i> DSC PC Setup Guide</h3>
+                <button class="btn-close" id="close-help-btn">&times;</button>
+            </div>
+            <div class="modal-body" style="gap: 24px; padding: 24px;">
+                <p class="text-muted" style="font-size: 0.9rem; line-height: 1.5; margin-bottom: 8px;">To enable the <strong>Auto-Detect</strong> feature on this website, your computer needs to be able to scan your USB ports. Follow these 3 extremely simple steps to set it up on your PC in 10 seconds!</p>
+                
+                <div class="setup-steps" style="display: flex; flex-direction: column; gap: 20px;">
+                    <!-- Step 1 -->
+                    <div class="setup-step" style="display: flex; gap: 16px; align-items: flex-start; border-bottom: 1px solid var(--panel-border); padding-bottom: 16px;">
+                        <div class="step-num" style="width: 32px; height: 32px; border-radius: 50%; background: #a855f7; display: flex; align-items: center; justify-content: center; font-weight: 700; color: white; flex-shrink: 0;">1</div>
+                        <div style="flex-grow: 1;">
+                            <h4 style="font-weight: 600; margin-bottom: 6px; font-size: 0.95rem;">Download Setup Files</h4>
+                            <p class="text-muted" style="font-size: 0.8rem; line-height: 1.4; margin-bottom: 12px;">Download both files below and save them into the <strong>same folder</strong> on your computer:</p>
+                            <div style="display: flex; gap: 12px; flex-wrap: wrap;">
+                                <a href="dist/DscHelper.exe" download class="btn btn-secondary btn-sm" style="color: #a855f7; border-color: rgba(168, 85, 247, 0.3); text-decoration: none;">
+                                    <i class="fa-solid fa-download"></i> 1. DscHelper.exe
+                                </a>
+                                <a href="dist/Setup.bat" download class="btn btn-secondary btn-sm" style="color: #10b981; border-color: rgba(16, 185, 129, 0.3); text-decoration: none;">
+                                    <i class="fa-solid fa-download"></i> 2. Setup.bat
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Step 2 -->
+                    <div class="setup-step" style="display: flex; gap: 16px; align-items: flex-start; border-bottom: 1px solid var(--panel-border); padding-bottom: 16px;">
+                        <div class="step-num" style="width: 32px; height: 32px; border-radius: 50%; background: #3b82f6; display: flex; align-items: center; justify-content: center; font-weight: 700; color: white; flex-shrink: 0;">2</div>
+                        <div style="flex-grow: 1;">
+                            <h4 style="font-weight: 600; margin-bottom: 6px; font-size: 0.95rem;">Run Setup.bat</h4>
+                            <p class="text-muted" style="font-size: 0.8rem; line-height: 1.4; margin-bottom: 8px;">Go to the folder where you saved the files, and <strong>double-click Setup.bat</strong>.</p>
+                            <div class="alert" style="background: rgba(245, 158, 11, 0.08); border: 1px solid rgba(245, 158, 11, 0.2); color: var(--warning); padding: 8px 12px; font-size: 0.75rem; border-radius: 6px; margin: 0; line-height: 1.4;">
+                                <i class="fa-solid fa-shield-halved"></i> <strong>Windows Notice:</strong> If a blue warning popup appears, click <u>"More Info"</u> and then click <u>"Run Anyway"</u>.
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Step 3 -->
+                    <div class="setup-step" style="display: flex; gap: 16px; align-items: flex-start;">
+                        <div class="step-num" style="width: 32px; height: 32px; border-radius: 50%; background: #10b981; display: flex; align-items: center; justify-content: center; font-weight: 700; color: white; flex-shrink: 0;"><i class="fa-solid fa-check"></i></div>
+                        <div>
+                            <h4 style="font-weight: 600; margin-bottom: 6px; font-size: 0.95rem;">All Set! Plug & Play</h4>
+                            <p class="text-muted" style="font-size: 0.8rem; line-height: 1.4;">A success window will show. The helper is now running silently in the background! Just plug in your USB DSC Token, and the website will automatically add your DSC details instantly!</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-primary" id="close-help-guide-btn" style="background: linear-gradient(135deg, #a855f7, #6366f1); border: none;">Got It, Thanks!</button>
+            </div>
         </div>
     </div>
 
